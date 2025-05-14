@@ -23,6 +23,22 @@ Importación de base de datos
 ```{r}
 biom <- read.csv2('data/biom.csv', header=T)
 biom <- biom %>% mutate(X.normal = as.numeric(X.normal))
+biom <- biom %>% 
+  mutate(Contaminación = recode(Contaminación,
+                                "Alta" = "High",
+                                "Media" = "Medium"),
+         Estrato.código = recode(Estrato.código,
+                                "E1" = "Z1",
+                                "E2" = "Z2",
+                                "E3" = "Z3",
+                                "E4" = "Z4"),
+         Especie.código = recode(Especie.código,
+                                 "Ti" = "T. recurvata",
+                                 "Pl" = "P. macrocarpa",
+                                 "Rh" = "R. baccifera",
+                                 "Br" = "Bryophytes",
+                                 "Li" = "Lichens",
+                                 "Ho" = "Host tree leaves"))
 
 posicion_sitio <- c("Copacabana", 
                     "San Cristobal",
@@ -31,18 +47,18 @@ posicion_sitio <- c("Copacabana",
                     "Poblado",
                     "CarlosE")
 posicion_contam <- c("Control",
-                     "Media",
-                     "Alta")
-posicion_especies <- c ("Ti",
-                        "Pl",
-                        "Rh",
-                        "Br",
-                        "Li",
-                        "Ho")
-posicion_estratos<- c ("E1",
-                       "E2",
-                       "E3",
-                       "E4")
+                     "Medium",
+                     "High")
+posicion_especies <- c ("T. recurvata",
+                        "P. macrocarpa",
+                        "R. baccifera",
+                        "Bryophytes",
+                        "Lichens",
+                        "Host tree leaves")
+posicion_estratos<- c ("Z1",
+                       "Z2",
+                       "Z3",
+                       "Z4")
 ```
 
 ### 5.0.1 Validar muestreo
@@ -56,7 +72,7 @@ result_table <- biom %>%
 view(result_table)
 ```
 
-## 5.1 Diferencia de la susceptibilidad entre briofitos
+## 5.1.0 Diferencia de la susceptibilidad entre briofitos
 
 ```{r}
 biomB <- biom %>%
@@ -66,29 +82,28 @@ anova.briofitos = aov(X.normal ~ Sitio.de.colecta, data = biomB)
 summary(anova.briofitos) # valor p (significancia)
 ```
 
-## 5.1 Diferencia de la susceptibilidad entre sitios
+## 5.1.1 Diferencia de la susceptibilidad entre sitios
 
 ```{r}
 tapply(biom$X.normal, biom$Sitio.de.colecta, summary)
 
-a <- ggplot(biom, aes(x = X.normal, fill = factor(Sitio.de.colecta, 
-                                             levels = posicion_sitio))) + 
-  geom_boxplot(aes(color = factor(Sitio.de.colecta, 
-                                  levels = posicion_sitio)),
-               alpha = 0.8) +
-  labs(x = "Susceptibilidad magnética") + 
+a <- ggplot(biom, aes(x = X.normal, 
+                      y = factor(Sitio.de.colecta, levels = posicion_sitio))) + 
+  geom_boxplot(aes(color = factor(Sitio.de.colecta, levels = posicion_sitio)),
+               fill = NA,  
+               outlier.shape = NA) +  
+  geom_jitter(aes(color = factor(Sitio.de.colecta, levels = posicion_sitio)),
+              width = 0, height = 0.2, size = 1.5, alpha = 0.6) +  
+  labs(x = expression(chi ~ (m^3 * kg^-1)),
+       y = "Site") + 
   coord_flip() + 
-  scale_fill_manual(values = c("Copacabana" = "blue", 
-                               "San Cristobal" = "blue",
-                               "Pedro Justo Berrío" = "darkorange",
-                               "UVA El tesoro" = "darkorange",
-                               "Poblado" = "red",
-                               "CarlosE" = "red"), 
-                    name = "Sitio de colecta") + 
-  scale_color_manual(values = c("blue","blue", 
-                                "darkorange","darkorange",
-                                "red", "red"),
-                    name = "Sitio de colecta")+
+  scale_color_manual(values = c("Copacabana" = "blue", 
+                                "San Cristobal" = "blue",
+                                "Pedro Justo Berrío" = "darkorange",
+                                "UVA El tesoro" = "darkorange",
+                                "Poblado" = "red",
+                                "CarlosE" = "red"),
+                     name = "Site") +
   theme_light()
 
 ggsave("plots/biomo_susxsitio.jpg", a, width = 12, height = 5, dpi = 300)
@@ -100,7 +115,7 @@ tukey_sitio <- TukeyHSD(anova.sitio)
 print(tukey_sitio) # diferencias significativas entre pares de sitios
 ```
 
-## 5.1.1 Aleatorizar selección de muestras para análisis químico
+## 5.1.2 Aleatorizar selección de muestras para análisis químico
 
 ```{r}
 set.seed(123) # Set the seed for reproducibility
@@ -135,8 +150,6 @@ summary_stats <- biom %>%
     error_max = sd(X.normal) / sqrt(length(X.normal))   # Error estándar para el máximo
   )
 
-
-
 # boxplot
 ggplot(biom, aes(x = X.normal)) + 
     geom_density() +
@@ -144,44 +157,71 @@ ggplot(biom, aes(x = X.normal)) +
   theme_light()
 ```
 
-### 5.2.2 Diferencia de la susceptibilidad entre niveles de contaminación
+### 5.2.1 Susceptibilidad entre niveles de contaminación
 
 ```{r}
+# Ver resumen por nivel de contaminación
 tapply(biom$X.normal, biom$Contaminación, summary)
 
-a <- ggplot(biom, aes(x = X.normal, fill = factor(Contaminación, levels = posicion_contam))) + 
-  geom_boxplot(aes(color = factor(Contaminación, 
-                                  levels = posicion_conta)),
-               alpha = 0.8) +
-  labs(x = "Susceptibilidad magnética") + 
-  coord_flip() + 
+# Crear boxplot con puntos y formato adecuado
+a <- ggplot(biom, aes(x = factor(Contaminación, levels = posicion_contam), 
+                      y = X.normal, 
+                      fill = factor(Contaminación, levels = posicion_contam), 
+                      color = factor(Contaminación, levels = posicion_contam))) + 
+  geom_boxplot(aes(color = factor(Contaminación, levels = posicion_contam)),
+               alpha = 0) +  # Transparente
+  geom_jitter(width = 0.2, alpha = 0.5, size = 1.0) +  # Agrega los puntos
+  labs(x = "Pollution levels", y = expression(chi~"(m"^3*~kg^-1*")")) + 
   scale_fill_manual(values = c("Control" = "blue", 
-                               "Media" = "darkorange",
-                               "Alta" = "red"), 
-                    name = "Contaminación") + 
-  scale_color_manual(values = c("blue","darkorange","red"),
-                    name = "Contaminación") +
+                               "Medium" = "darkorange",
+                               "High" = "red"),
+                    name = "Pollution") + 
+  scale_color_manual(values = c("Control" = "blue", 
+                                "Medium" = "darkorange",
+                                "High" = "red"),
+                     name = "Pollution") +
+  theme(legend.position = "none") +
   theme_light()
-ggsave("plots/biomo_susxcontam.jpg", a, width = 8, height = 4, dpi = 300)
 
-anova.contam = aov(X.normal ~ Contaminación, data = biom)
-summary(anova.contam) # valor p (significancia)
+# Guardar gráfico
+ggsave("plots/biomo_susxcontam.jpg", a, width = 6, height = 6, dpi = 300)
 
+# ANOVA por nivel de contaminación
+anova.contam <- aov(X.normal ~ Contaminación, data = biom)
+summary(anova.contam)
+
+# Comparación post-hoc entre niveles
 tukey_contam <- TukeyHSD(anova.contam)
-print(tukey_contam) # diferencias significativas entre pares de niveles de contaminación
+print(tukey_contam)
 ```
 
-## 5.4 Susceptibilidad entre especies
+### 5.2.2 Susceptibilidad entre especies
 
 ```{r}
 tapply(biom$X.normal, biom$Especie.código, summary)
 
-ggplot(biom, aes(x = X.normal, fill = factor(Especie.código, levels = posicion_especies))) + 
-  geom_boxplot() + 
-  labs(x = "Susceptibilidad magnética") + 
-  coord_flip() + 
-  scale_fill_brewer(palette = "Greens", name = "Especie") + 
-  theme_light()
+nombres_especies <- posicion_especies
+
+etiquetas_x <- lapply(seq_along(nombres_especies), function(i) {
+  if (i <= 3) {
+    bquote(italic(.(nombres_especies[i])))
+  } else {
+    nombres_especies[i]
+  }
+})
+
+b <- ggplot(biom, aes(x = factor(Especie.código, levels = posicion_especies), 
+                 y = X.normal)) + 
+  geom_boxplot(color = "black", fill = "white") + 
+  geom_jitter(width = 0.2, alpha = 0.5, size = 1.0, color = "black") +
+  labs(x = "Species", 
+       y = expression(chi~"(m"^3*~kg^-1*")")) +
+  theme_light() +
+  theme(legend.position = "none") +
+  scale_x_discrete(labels = etiquetas_x)
+
+# Guardar gráfico
+ggsave("plots/biomo_susxspecie.jpg", b, width = 6, height = 6, dpi = 300)
 
 anova.especies = aov(X.normal ~ Especie.código, data = biom)
 summary(anova.especies) # valor p (significancia)
@@ -190,309 +230,308 @@ tukey_especies <- TukeyHSD(anova.especies)
 print(tukey_especies) # diferencias significativas entre pares de niveles de especies
 ```
 
-## 5.6 Susceptibilidad entre estratos
+### 5.2.3 Susceptibilidad entre especies x estratos
 
-Tillandsia
-
-```{r}
-tapply(biomT$X.normal, biomT$Estrato.código, summary)
-
-TE <- ggplot(biomT, aes(x = X.normal, fill = factor(Estrato.código, levels = posicion_estratos))) + 
-  geom_boxplot() + 
-  labs(x = "Susceptibilidad magnética", y = "Tillandsia recurvata") + 
-  coord_flip() + 
-  scale_fill_brewer(palette = "Greens", name = "Estrato") + 
-  theme_light()
-
-anova.estratos = aov(X.normal ~ Estrato.código, data = biomT)
-summary(anova.estratos) # valor p (significancia)
-
-tukey_estratos <- TukeyHSD(anova.estratos)
-print(tukey_estratos) # diferencias significativas entre pares de estratos
-```
-
-Pleopeltis
+ANOVA
 
 ```{r}
-tapply(biomP$X.normal, biomP$Estrato.código, summary)
+resultados_texto <- list()
+especies <- unique(biom$Especie.código)
 
-PE <- ggplot(biomP, aes(x = X.normal, fill = factor(Estrato.código, levels = posicion_estratos))) + 
-  geom_boxplot() + 
-  labs(x = "Susceptibilidad magnética", y = "Pleopeltis macrocarpa") + 
-  coord_flip() + 
-  scale_fill_brewer(palette = "Greens", name = "Estrato") + 
-  theme_light()
-
-anova.estratos = aov(X.normal ~ Estrato.código, data = biomP)
-summary(anova.estratos) # valor p (significancia)
-
-tukey_estratos <- TukeyHSD(anova.estratos)
-print(tukey_estratos) # diferencias significativas entre pares de estratos
-```
-
-Rhipsalis
-
-```{r}
-tapply(biomR$X.normal, biomR$Estrato.código, summary)
-
-RE <- ggplot(biomR, aes(x = X.normal, fill = factor(Estrato.código, levels = posicion_estratos))) + 
-  geom_boxplot() + 
-  labs(x = "Susceptibilidad magnética", y = "Rhipsalis baccifera") + 
-  coord_flip() + 
-  scale_fill_brewer(palette = "Greens", name = "Estrato") + 
-  theme_light()
-
-anova.estratos = aov(X.normal ~ Estrato.código, data = biomR)
-summary(anova.estratos) # valor p (significancia)
-
-tukey_estratos <- TukeyHSD(anova.estratos)
-print(tukey_estratos) # diferencias significativas entre pares de estratos
-```
-
-Briófitos
-
-```{r}
-tapply(biomB$X.normal, biomB$Estrato.código, summary)
-
-BE <- ggplot(biomB, aes(x = X.normal, fill = factor(Estrato.código, levels = posicion_estratos))) + 
-  geom_boxplot() + 
-  labs(x = "Susceptibilidad magnética", y = "Briófitos") + 
-  coord_flip() + 
-  scale_fill_brewer(palette = "Greens", name = "Estrato") + 
-  theme_light()
-
-anova.estratos = aov(X.normal ~ Estrato.código, data = biomB)
-summary(anova.estratos) # valor p (significancia)
-
-tukey_estratos <- TukeyHSD(anova.estratos)
-print(tukey_estratos) # diferencias significativas entre pares de estratos
-```
-
-Líquenes
-
-```{r}
-tapply(biomL$X.normal, biomL$Estrato.código, summary)
-
-LE <- ggplot(biomL, aes(x = X.normal, fill = factor(Estrato.código, levels = posicion_estratos))) + 
-  geom_boxplot() + 
-  labs(x = "Susceptibilidad magnética", y = "Líquenes") + 
-  coord_flip() + 
-  scale_fill_brewer(palette = "Greens", name = "Estrato") + 
-  theme_light()
-
-anova.estratos = aov(X.normal ~ Estrato.código, data = biomL)
-summary(anova.estratos) # valor p (significancia)
-
-tukey_estratos <- TukeyHSD(anova.estratos)
-print(tukey_estratos) # diferencias significativas entre pares de estratos
-```
-
-```{r}
-composicion <- plot_grid(TE, PE, RE, nrow = 1, labels = "AUTO")
-ggsave ("plots/composicion_estravasc.png", composicion, width = 16, height = 5, units = "in", dpi = 300)
-
-composicion <- plot_grid(BE, LE, labels = "AUTO")
-ggsave ("plots/composicion_estraNvasc.png", composicion, width = 10.6, height = 3.3, units = "in", dpi = 300)
-```
-
-## 5.5 Susceptibilidad entre niveles de contaminación
-
-Tillandsia
-
-```{r}
-biomT <- biom %>%
-  filter(Especie.epifita %in% c("Tillandsia recurvata")) %>% 
-  mutate(sus = as.numeric(X.normal))
-
-tapply(biomT$X.normal, biomT$Contaminación, summary)
-
-TC <- ggplot(biomT, aes(x = X.normal, fill = factor(Contaminación, levels = posicion_contam))) + 
-  geom_boxplot(aes(color = factor(Contaminación, 
-                                  levels = posicion_conta)),
-               alpha = 0.8) +
-  theme(legend.position = "none") +
-  labs(x = "Susceptibilidad magnética", y = "Tillandsia recurvata") + 
-  coord_flip() + 
-  scale_fill_manual(values = c("Control" = "blue", 
-                               "Media" = "darkorange",
-                               "Alta" = "red"), 
-                    name = "Contaminación") + 
-  scale_color_manual(values = c("blue","darkorange","red"),
-                    name = "Contaminación") +
-  theme_light()
-
-anova.contam = aov(X.normal ~ Contaminación, data = biomT)
-summary(anova.contam) # valor p (significancia)
-
-tukey_contam <- TukeyHSD(anova.contam)
-print(tukey_contam) # diferencias significativas entre pares de niveles de contaminación
-```
-
-Pleopeltis
-
-```{r}
-biomP <- biom %>%
-  filter(Especie.epifita %in% c("Pleopeltis macrocarpa")) %>% 
-  mutate(sus = as.numeric(X.normal))
+for (esp in especies) {
+  biom_esp <- biom %>% 
+    filter(Especie.código == esp)
   
-tapply(biomP$X.normal, biomP$Contaminación, summary)
+  # Omitir si hay menos de 2 estratos
+  if (length(unique(biom_esp$Estrato.código)) < 2) {
+    next
+  }
+  
+  # ANOVA
+  anova <- aov(X.normal ~ Estrato.código, data = biom_esp)
+  anova_summary <- summary(anova)
+  p_valor <- anova_summary[[1]][["Pr(>F)"]][1]
+  F_valor <- anova_summary[[1]][["F value"]][1]
+  gl1 <- anova_summary[[1]][["Df"]][1]
+  gl2 <- anova_summary[[1]][["Df"]][2]
 
-PC <- ggplot(biomP, aes(x = X.normal, fill = factor(Contaminación, levels = posicion_contam))) + 
-  geom_boxplot(aes(color = factor(Contaminación, 
-                                  levels = posicion_conta)),
-               alpha = 0.8) +
-  theme(legend.position = "none") +
-  labs(x = "Susceptibilidad magnética", y = "Pleopeltis macrocarpa") + 
-  coord_flip() + 
-  scale_fill_manual(values = c("Control" = "blue", 
-                               "Media" = "darkorange",
-                               "Alta" = "red"), 
-                    name = "Contaminación") + 
-  scale_color_manual(values = c("blue","darkorange","red"),
-                    name = "Contaminación") +
-  theme_light()
+  texto_base <- paste0("For *", esp, "*, a one-way ANOVA revealed ")
+  
+  if (p_valor < 0.05) {
+    texto_base <- paste0(
+      texto_base,
+      "significant differences in χ values among strata (ANOVA, F₍", gl1, ",", gl2, "₎ = ",
+      round(F_valor, 2), ", p = ", format.pval(p_valor, digits = 3), "). "
+    )
+    
+    # Tukey
+    tukey <- TukeyHSD(anova)
+    comparaciones <- tukey$Estrato.código
+    sigs <- comparaciones[comparaciones[, "p adj"] < 0.05, ]
+    
+    if (nrow(sigs) > 0) {
+      pares <- rownames(sigs)
+      texto_comparaciones <- paste(pares, collapse = "; ")
+      texto_base <- paste0(texto_base, 
+        "Post-hoc Tukey tests showed significant differences between the following strata: ",
+        texto_comparaciones, ". "
+      )
+    } else {
+      texto_base <- paste0(texto_base, 
+        "However, post-hoc Tukey tests did not detect consistent differences between all pairs. "
+      )
+    }
+  } else {
+    texto_base <- paste0(
+      texto_base,
+      "no significant differences among strata (ANOVA, F₍", gl1, ",", gl2, "₎ = ",
+      round(F_valor, 2), ", p = ", format.pval(p_valor, digits = 3), "). "
+    )
+  }
+  
+  # Medianas por estrato
+  resumen_medianas <- biom_esp %>%
+    group_by(Estrato.código) %>%
+    summarise(mediana = median(X.normal, na.rm = TRUE)) %>%
+    mutate(label = paste0(Estrato.código, ": ", signif(mediana, 3), " m³ kg⁻¹"))
 
-anova.contam = aov(X.normal ~ Contaminación, data = biomP)
-summary(anova.contam) # valor p (significancia)
+  texto_medianas <- paste("Median χ values by stratum were:", 
+                          paste(resumen_medianas$label, collapse = "; "), ".")
 
-tukey_contam <- TukeyHSD(anova.contam)
-print(tukey_contam) # diferencias significativas entre pares de niveles de contaminación
+  resultados_texto[[esp]] <- paste0(texto_base, texto_medianas)
+}
+
+# Mostrar todos los textos
+for (esp in names(resultados_texto)) {
+  cat("\n\n", resultados_texto[[esp]], "\n")
+}
 ```
 
-Rhipsalis
+Plot
 
 ```{r}
-biomR <- biom %>%
-  filter(Especie.epifita %in% c("Rhipsalis baccifera")) %>% 
-  mutate(sus = as.numeric(X.normal))
+library(cowplot)
 
-tapply(biomR$X.normal, biomR$Contaminación, summary)
+# Especies en orden deseado
+especies_deseadas <- c("T. recurvata", "P. macrocarpa", "R. baccifera", "Bryophytes", "Lichens")
 
-RC <- ggplot(biomR, aes(x = X.normal, fill = factor(Contaminación, levels = posicion_contam))) + 
- geom_boxplot(aes(color = factor(Contaminación, 
-                                  levels = posicion_conta)),
-               alpha = 0.8) +
-  theme(legend.position = "none") +
-  labs(x = "Susceptibilidad magnética", y = "Rhipsalis baccifera") + 
-  coord_flip() + 
-  scale_fill_manual(values = c("Control" = "blue", 
-                               "Media" = "darkorange",
-                               "Alta" = "red"), 
-                    name = "Contaminación") + 
-  scale_color_manual(values = c("blue","darkorange","red"),
-                    name = "Contaminación") +
-  theme_light()
+# Lista para guardar los gráficos
+graficos_especies <- list()
 
-anova.contam = aov(X.normal ~ Contaminación, data = biomR)
-summary(anova.contam) # valor p (significancia)
+# Crear gráfico por especie
+for (i in seq_along(especies_deseadas)) {
+  esp <- especies_deseadas[i]
+  
+  biom_esp <- biom %>% 
+    filter(Especie.código == esp)
+  
+  # Omitir si hay menos de 2 estratos
+  if (length(unique(biom_esp$Estrato.código)) < 2) {
+    next
+  }
 
-tukey_contam <- TukeyHSD(anova.contam)
-print(tukey_contam) # diferencias significativas entre pares de niveles de contaminación
+  # Título: itálica para los primeros 3
+  titulo <- if (i <= 3) {
+    bquote(italic(.(esp)))
+  } else {
+    esp
+  }
+
+  g <- ggplot(biom_esp, aes(x = factor(Estrato.código, levels = posicion_estratos), 
+                            y = X.normal)) +
+    geom_boxplot(fill = NA, color = "black", outlier.shape = NA) +
+    geom_jitter(width = 0.2, alpha = 0.5, size = 1.0, color = "black") +
+    labs(x = "Zone", y = expression(chi~"(m"^3*~kg^-1*")")) +
+    ggtitle(titulo) +
+    theme_light() +
+    theme(
+      legend.position = "none",
+      plot.title = element_text(hjust = 0.5, size = 12),
+      axis.title = element_text(size = 9),
+      axis.text = element_text(size = 8)
+    )
+
+  graficos_especies[[esp]] <- g
+}
+
+# Asegurar que estén en el orden correcto y existan
+graficos_ordenados <- graficos_especies[especies_deseadas]
+graficos_ordenados <- graficos_ordenados[!sapply(graficos_ordenados, is.null)]
+
+# Composición final: 3 arriba y 2 abajo
+fila1 <- plot_grid(plotlist = graficos_ordenados[1:3], nrow = 1, labels = c("A", "B", "C"))
+fila2 <- plot_grid(plotlist = graficos_ordenados[4:5], nrow = 1, labels = c("D", "E"))
+
+composicion <- plot_grid(fila1, fila2, ncol = 1, rel_heights = c(1, 1))
+
+# Guardar gráfico final
+ggsave("plots/composicion_estratos_especies_v2.jpg", 
+       composicion, width = 12, height = 8, dpi = 300)
+
+# Mostrar en pantalla
+print(composicion)
 ```
 
-Briofitos
+### 5.2.4 Susceptibilidad entre especies x niveles de contaminación
+
+ANOVA
 
 ```{r}
-biomB <- biom %>%
-  filter(Especie.epifita %in% c("Kymatocalyx dominicensis", "Fabronia ciliaris")) %>% 
-  mutate(sus = as.numeric(X.normal))
+resultados_texto <- list()
+especies <- unique(biom$Especie.código)
 
-ggplot(biomB, aes(x = X.normal, fill = factor(Especie.epifita))) + 
-  geom_boxplot() + 
-  labs(x = "Susceptibilidad magnética") + 
-  coord_flip() + 
-  scale_fill_brewer(palette = "Greens", name = "Especie") + 
-  theme_light()
+for (esp in especies) {
+  biom_esp <- biom %>% 
+    filter(Especie.código == esp)
+  
+  # Omitir si hay menos de 2 niveles de contaminación
+  if (length(unique(biom_esp$Contaminación)) < 2) {
+    next
+  }
+  
+  # ANOVA
+  anova <- aov(X.normal ~ Contaminación, data = biom_esp)
+  anova_summary <- summary(anova)
+  p_valor <- anova_summary[[1]][["Pr(>F)"]][1]
+  F_valor <- anova_summary[[1]][["F value"]][1]
+  gl1 <- anova_summary[[1]][["Df"]][1]
+  gl2 <- anova_summary[[1]][["Df"]][2]
 
-tapply(biomB$X.normal, biomB$Contaminación, summary)
+  texto_base <- paste0("For *", esp, "*, a one-way ANOVA revealed ")
+  
+  if (p_valor < 0.05) {
+    texto_base <- paste0(
+      texto_base,
+      "significant differences in χ values among pollution levels (ANOVA, F₍", gl1, ",", gl2, "₎ = ",
+      round(F_valor, 2), ", p = ", format.pval(p_valor, digits = 3), "). "
+    )
+    
+tukey <- tryCatch(TukeyHSD(anova), error = function(e) NULL)
 
-BC <- ggplot(biomB, aes(x = X.normal, fill = factor(Contaminación, levels = posicion_contam))) + 
-  geom_boxplot(aes(color = factor(Contaminación, 
-                                  levels = posicion_conta)),
-               alpha = 0.8) +
-  theme(legend.position = "none") +
-  labs(x = "Susceptibilidad magnética", y = "Briófitos") + 
-  coord_flip() + 
-  scale_fill_manual(values = c("Control" = "blue", 
-                               "Media" = "darkorange",
-                               "Alta" = "red"), 
-                    name = "Contaminación") + 
-  scale_color_manual(values = c("blue","darkorange","red"),
-                    name = "Contaminación") +
-  theme_light()
+if (!is.null(tukey) && "Contaminación" %in% names(tukey)) {
+  comparaciones <- tukey$Contaminación
+  sigs <- comparaciones[comparaciones[, "p adj"] < 0.05, , drop = FALSE]
 
-anova.contam = aov(X.normal ~ Contaminación, data = biomB)
-summary(anova.contam) # valor p (significancia)
+  if (nrow(sigs) > 0) {
+    pares <- rownames(sigs)
+    texto_comparaciones <- paste(pares, collapse = "; ")
+    texto_base <- paste0(texto_base, 
+      "Post-hoc Tukey tests showed significant differences between the following pollution levels: ",
+      texto_comparaciones, ". "
+    )
+  } else {
+    texto_base <- paste0(texto_base, 
+      "However, post-hoc Tukey tests did not detect consistent differences between all pairs. "
+    )
+  }
+} else {
+  texto_base <- paste0(texto_base,
+    "However, post-hoc Tukey test could not be performed due to insufficient group sizes."
+  )
+}
+    
+    if (nrow(sigs) > 0) {
+      pares <- rownames(sigs)
+      texto_comparaciones <- paste(pares, collapse = "; ")
+      texto_base <- paste0(texto_base, 
+        "Post-hoc Tukey tests showed significant differences between the following pollution levels: ",
+        texto_comparaciones, ". "
+      )
+    } else {
+      texto_base <- paste0(texto_base, 
+        "However, post-hoc Tukey tests did not detect consistent differences between all pairs. "
+      )
+    }
+  } else {
+    texto_base <- paste0(
+      texto_base,
+      "no significant differences among pollution levels (ANOVA, F₍", gl1, ",", gl2, "₎ = ",
+      round(F_valor, 2), ", p = ", format.pval(p_valor, digits = 3), "). "
+    )
+  }
+  
+  # Medianas por nivel de contaminación
+  resumen_medianas <- biom_esp %>%
+    group_by(Contaminación) %>%
+    summarise(mediana = median(X.normal, na.rm = TRUE)) %>%
+    mutate(label = paste0(Contaminación, ": ", signif(mediana, 3), " m³ kg⁻¹"))
 
-tukey_contam <- TukeyHSD(anova.contam)
-print(tukey_contam) # diferencias significativas entre pares de niveles de contaminación
+  texto_medianas <- paste("Median χ values by pollution level were:", 
+                          paste(resumen_medianas$label, collapse = "; "), ".")
+
+  resultados_texto[[esp]] <- paste0(texto_base, texto_medianas)
+}
+
+# Mostrar los textos
+for (esp in names(resultados_texto)) {
+  cat("\n\n", resultados_texto[[esp]], "\n")
+}
 ```
 
-Liquenes
+Plot
 
 ```{r}
-biomL <- biom %>%
-  filter(Especie.epifita %in% c("Flavoparmelia carperata")) %>% 
-  mutate(sus = as.numeric(X.normal))
+# Orden deseado + nueva especie
+especies_deseadas <- c("T. recurvata", "P. macrocarpa", "R. baccifera", "Bryophytes", "Lichens", "Host tree leaves")
 
-tapply(biomL$X.normal, biomL$Contaminación, summary)
+# Lista para guardar los gráficos
+graficos_especies <- list()
 
-LC <- ggplot(biomL, aes(x = X.normal, fill = factor(Contaminación, levels = posicion_contam))) + 
-  geom_boxplot(aes(color = factor(Contaminación, 
-                                  levels = posicion_conta)),
-               alpha = 0.8) +
-  theme(legend.position = "none") +
-  labs(x = "Susceptibilidad magnética", y = "Flavoparmelia caperata") + 
-  coord_flip() + 
-  scale_fill_manual(values = c("Control" = "blue", 
-                               "Media" = "darkorange",
-                               "Alta" = "red"), 
-                    name = "Contaminación") + 
-  scale_color_manual(values = c("blue","darkorange","red"),
-                    name = "Contaminación") +
-  theme_light()
+# Niveles y colores deseados
+niveles_contaminacion <- c("Control", "Medium", "High")
+colores_contaminacion <- c("Control" = "blue", "Medium" = "darkorange", "High" = "red")
 
-anova.contam = aov(X.normal ~ Contaminación, data = biomL)
-summary(anova.contam) # valor p (significancia)
+# Crear gráfico por especie
+for (i in seq_along(especies_deseadas)) {
+  esp <- especies_deseadas[i]
+  
+  biom_esp <- biom %>% 
+    filter(Especie.código == esp)
+  
+  if (length(unique(biom_esp$Contaminación)) < 2) {
+    next
+  }
 
-tukey_contam <- TukeyHSD(anova.contam)
-print(tukey_contam) # diferencias significativas entre pares de niveles de contaminación
-```
+  titulo <- if (i <= 3) {
+    bquote(italic(.(esp)))
+  } else {
+    esp
+  }
 
-Hojas
+  g <- ggplot(biom_esp, aes(x = factor(Contaminación, levels = niveles_contaminacion), 
+                            y = X.normal, color = Contaminación)) +
+    geom_boxplot(fill = NA, outlier.shape = NA) +
+    geom_jitter(width = 0.2, alpha = 0.6, size = 1.2) +
+    scale_color_manual(values = colores_contaminacion, name = "Pollution levels") +
+    labs(x = "Pollution level", y = expression(chi~"(m"^3*~kg^-1*")")) +
+    ggtitle(titulo) +
+    theme_light() +
+    theme(
+      plot.title = element_text(hjust = 0.5, size = 12),
+      axis.title = element_text(size = 9),
+      axis.text = element_text(size = 8),
+      legend.position = "none"
+    )
 
-```{r}
-biomH <- biom %>%
-  filter(Especie.epifita %in% c("Hojas")) %>% 
-  mutate(sus = as.numeric(X.normal))
+  graficos_especies[[esp]] <- g
+}
 
-tapply(biomH$X.normal, biomH$Contaminación, summary)
+# Ordenar y quitar NULL
+graficos_ordenados <- graficos_especies[especies_deseadas]
+graficos_ordenados <- graficos_ordenados[!sapply(graficos_ordenados, is.null)]
 
-HC <-  ggplot(biomH, aes(x = X.normal, fill = factor(Contaminación, levels = posicion_contam))) + 
-  geom_boxplot(aes(color = factor(Contaminación, 
-                                  levels = posicion_conta)),
-               alpha = 0.8) +
-  theme(legend.position = "none") +
-  labs(x = "Susceptibilidad magnética", y = "Hojas de los árboles") + 
-  coord_flip() + 
-  scale_fill_manual(values = c("Control" = "blue", 
-                               "Media" = "darkorange",
-                               "Alta" = "red"), 
-                    name = "Contaminación") + 
-  scale_color_manual(values = c("blue","darkorange","red"),
-                    name = "Contaminación") +
-  theme_light()
+# Composición: 3 arriba, 3 abajo
+fila1 <- plot_grid(plotlist = graficos_ordenados[1:3], nrow = 1, labels = c("A", "B", "C"))
+fila2 <- plot_grid(plotlist = graficos_ordenados[4:6], nrow = 1, labels = c("D", "E", "F"))
 
-anova.contam = aov(X.normal ~ Contaminación, data = biomH)
-summary(anova.contam) # valor p (significancia)
+composicion <- plot_grid(fila1, fila2, ncol = 1, rel_heights = c(1, 1))
 
-tukey_contam <- TukeyHSD(anova.contam)
-print(tukey_contam) # diferencias significativas entre pares de niveles de contaminación
-```
+# Guardar gráfico
+ggsave("plots/composicion_contaminacion_especies.jpg", 
+       composicion, width = 12, height = 8, dpi = 300)
 
-```{r}
-composicion <- plot_grid(TC, PC, RC, BC, LC, HC, labels = "AUTO")
-ggsave ("plots/biomon_nivelxspecie.png", composicion, width = 17, height = 8, units = "in", dpi = 300)
+# Mostrar
+print(composicion)
 ```
 
 ## 5.6 Metales entre niveles de contaminación
