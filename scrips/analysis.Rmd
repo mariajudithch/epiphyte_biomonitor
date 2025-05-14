@@ -1,0 +1,707 @@
+---
+title: "<span style='color:#305f72'><center><br>Epífitas al servicio de la ciudad</center>"
+subtitle: 'Componente Ciencia y Tecnología - Silvicultura SIF'
+author: "<center><a href='mailto:judith.carmona@udea.edu.co'>Maria Judith Carmona. Investigadora – Fundación Jardín Botánico de Medellín.</a></center>"
+date: "<center>Date: 04/07/2023 - 15/12/2023 </center>"
+output: html_document
+---
+
+# Librerías
+
+```{r, echo = TRUE, eval = TRUE, warning = FALSE, message = FALSE}
+library(tidyverse) 
+library(ggplot2) 
+library(readr)
+```
+
+# 5. Biomonitores
+
+## 5.0 Data
+
+Importación de base de datos
+
+```{r}
+biom <- read.csv2('data/biom.csv', header=T)
+biom <- biom %>% mutate(X.normal = as.numeric(X.normal))
+
+posicion_sitio <- c("Copacabana", 
+                    "San Cristobal",
+                    "UVA El tesoro",
+                    "Pedro Justo Berrío",
+                    "Poblado",
+                    "CarlosE")
+posicion_contam <- c("Control",
+                     "Media",
+                     "Alta")
+posicion_especies <- c ("Ti",
+                        "Pl",
+                        "Rh",
+                        "Br",
+                        "Li",
+                        "Ho")
+posicion_estratos<- c ("E1",
+                       "E2",
+                       "E3",
+                       "E4")
+```
+
+### 5.0.1 Validar muestreo
+
+```{r}
+result_table <- biom %>%
+  group_by(Sitio.de.colecta, Especie.código, Estrato.código) %>%
+  summarise(sample_count = n()) %>%
+  spread(Estrato.código, sample_count, fill = 0) %>%
+  ungroup()
+view(result_table)
+```
+
+## 5.1 Diferencia de la susceptibilidad entre briofitos
+
+```{r}
+biomB <- biom %>%
+  filter(Especie.epifita %in% c("Kymatocalyx dominicensis", "Fabronia ciliaris")) %>% 
+  mutate(sus = as.numeric(X.normal))
+anova.briofitos = aov(X.normal ~ Sitio.de.colecta, data = biomB)
+summary(anova.briofitos) # valor p (significancia)
+```
+
+## 5.1 Diferencia de la susceptibilidad entre sitios
+
+```{r}
+tapply(biom$X.normal, biom$Sitio.de.colecta, summary)
+
+a <- ggplot(biom, aes(x = X.normal, fill = factor(Sitio.de.colecta, 
+                                             levels = posicion_sitio))) + 
+  geom_boxplot(aes(color = factor(Sitio.de.colecta, 
+                                  levels = posicion_sitio)),
+               alpha = 0.8) +
+  labs(x = "Susceptibilidad magnética") + 
+  coord_flip() + 
+  scale_fill_manual(values = c("Copacabana" = "blue", 
+                               "San Cristobal" = "blue",
+                               "Pedro Justo Berrío" = "darkorange",
+                               "UVA El tesoro" = "darkorange",
+                               "Poblado" = "red",
+                               "CarlosE" = "red"), 
+                    name = "Sitio de colecta") + 
+  scale_color_manual(values = c("blue","blue", 
+                                "darkorange","darkorange",
+                                "red", "red"),
+                    name = "Sitio de colecta")+
+  theme_light()
+
+ggsave("plots/biomo_susxsitio.jpg", a, width = 12, height = 5, dpi = 300)
+
+anova.sitio = aov(X.normal ~ Sitio.de.colecta, data = biom)
+summary(anova.sitio) # valor p (significancia)
+
+tukey_sitio <- TukeyHSD(anova.sitio)
+print(tukey_sitio) # diferencias significativas entre pares de sitios
+```
+
+## 5.1.1 Aleatorizar selección de muestras para análisis químico
+
+```{r}
+set.seed(123) # Set the seed for reproducibility
+
+random_samples <- biom %>%
+   mutate(Especie.epifita = ifelse(Especie.epifita %in% 
+                                     c("Kymatocalyx dominicensis", 
+                                       "Fabronia ciliaris"), "briofito", 
+                                   Especie.epifita)) %>%
+  filter(Especie.epifita %in% c("Rhipsalis baccifera",      
+                                "Pleopeltis macrocarpa",    
+                                "Tillandsia recurvata",    
+                                "Flavoparmelia carperata", 
+                                "briofito")) %>%
+  group_by(Contaminación, Estrato.código, Especie.epifita) %>%
+  sample_n(1)  # Change 1 to the desired number of random IDs per group
+
+write.csv(random_samples, file = "databases/biom_samples.csv")
+```
+
+## 5.2 Propiedades magnéticas
+
+```{r}
+summary_stats <- biom %>%
+  summarise(
+    min_value = min(X.normal),
+    max_value = max(X.normal),
+    mean_value = mean(X.normal),
+    median_value = median(X.normal),
+    sd_value = sd(X.normal),
+    error_min = sd(X.normal) / sqrt(length(X.normal)),  # Error estándar para el mínimo
+    error_max = sd(X.normal) / sqrt(length(X.normal))   # Error estándar para el máximo
+  )
+
+
+
+# boxplot
+ggplot(biom, aes(x = X.normal)) + 
+    geom_density() +
+  labs(x = "Susceptibilidad magnética") + 
+  theme_light()
+```
+
+### 5.2.2 Diferencia de la susceptibilidad entre niveles de contaminación
+
+```{r}
+tapply(biom$X.normal, biom$Contaminación, summary)
+
+a <- ggplot(biom, aes(x = X.normal, fill = factor(Contaminación, levels = posicion_contam))) + 
+  geom_boxplot(aes(color = factor(Contaminación, 
+                                  levels = posicion_conta)),
+               alpha = 0.8) +
+  labs(x = "Susceptibilidad magnética") + 
+  coord_flip() + 
+  scale_fill_manual(values = c("Control" = "blue", 
+                               "Media" = "darkorange",
+                               "Alta" = "red"), 
+                    name = "Contaminación") + 
+  scale_color_manual(values = c("blue","darkorange","red"),
+                    name = "Contaminación") +
+  theme_light()
+ggsave("plots/biomo_susxcontam.jpg", a, width = 8, height = 4, dpi = 300)
+
+anova.contam = aov(X.normal ~ Contaminación, data = biom)
+summary(anova.contam) # valor p (significancia)
+
+tukey_contam <- TukeyHSD(anova.contam)
+print(tukey_contam) # diferencias significativas entre pares de niveles de contaminación
+```
+
+## 5.4 Susceptibilidad entre especies
+
+```{r}
+tapply(biom$X.normal, biom$Especie.código, summary)
+
+ggplot(biom, aes(x = X.normal, fill = factor(Especie.código, levels = posicion_especies))) + 
+  geom_boxplot() + 
+  labs(x = "Susceptibilidad magnética") + 
+  coord_flip() + 
+  scale_fill_brewer(palette = "Greens", name = "Especie") + 
+  theme_light()
+
+anova.especies = aov(X.normal ~ Especie.código, data = biom)
+summary(anova.especies) # valor p (significancia)
+
+tukey_especies <- TukeyHSD(anova.especies)
+print(tukey_especies) # diferencias significativas entre pares de niveles de especies
+```
+
+## 5.6 Susceptibilidad entre estratos
+
+Tillandsia
+
+```{r}
+tapply(biomT$X.normal, biomT$Estrato.código, summary)
+
+TE <- ggplot(biomT, aes(x = X.normal, fill = factor(Estrato.código, levels = posicion_estratos))) + 
+  geom_boxplot() + 
+  labs(x = "Susceptibilidad magnética", y = "Tillandsia recurvata") + 
+  coord_flip() + 
+  scale_fill_brewer(palette = "Greens", name = "Estrato") + 
+  theme_light()
+
+anova.estratos = aov(X.normal ~ Estrato.código, data = biomT)
+summary(anova.estratos) # valor p (significancia)
+
+tukey_estratos <- TukeyHSD(anova.estratos)
+print(tukey_estratos) # diferencias significativas entre pares de estratos
+```
+
+Pleopeltis
+
+```{r}
+tapply(biomP$X.normal, biomP$Estrato.código, summary)
+
+PE <- ggplot(biomP, aes(x = X.normal, fill = factor(Estrato.código, levels = posicion_estratos))) + 
+  geom_boxplot() + 
+  labs(x = "Susceptibilidad magnética", y = "Pleopeltis macrocarpa") + 
+  coord_flip() + 
+  scale_fill_brewer(palette = "Greens", name = "Estrato") + 
+  theme_light()
+
+anova.estratos = aov(X.normal ~ Estrato.código, data = biomP)
+summary(anova.estratos) # valor p (significancia)
+
+tukey_estratos <- TukeyHSD(anova.estratos)
+print(tukey_estratos) # diferencias significativas entre pares de estratos
+```
+
+Rhipsalis
+
+```{r}
+tapply(biomR$X.normal, biomR$Estrato.código, summary)
+
+RE <- ggplot(biomR, aes(x = X.normal, fill = factor(Estrato.código, levels = posicion_estratos))) + 
+  geom_boxplot() + 
+  labs(x = "Susceptibilidad magnética", y = "Rhipsalis baccifera") + 
+  coord_flip() + 
+  scale_fill_brewer(palette = "Greens", name = "Estrato") + 
+  theme_light()
+
+anova.estratos = aov(X.normal ~ Estrato.código, data = biomR)
+summary(anova.estratos) # valor p (significancia)
+
+tukey_estratos <- TukeyHSD(anova.estratos)
+print(tukey_estratos) # diferencias significativas entre pares de estratos
+```
+
+Briófitos
+
+```{r}
+tapply(biomB$X.normal, biomB$Estrato.código, summary)
+
+BE <- ggplot(biomB, aes(x = X.normal, fill = factor(Estrato.código, levels = posicion_estratos))) + 
+  geom_boxplot() + 
+  labs(x = "Susceptibilidad magnética", y = "Briófitos") + 
+  coord_flip() + 
+  scale_fill_brewer(palette = "Greens", name = "Estrato") + 
+  theme_light()
+
+anova.estratos = aov(X.normal ~ Estrato.código, data = biomB)
+summary(anova.estratos) # valor p (significancia)
+
+tukey_estratos <- TukeyHSD(anova.estratos)
+print(tukey_estratos) # diferencias significativas entre pares de estratos
+```
+
+Líquenes
+
+```{r}
+tapply(biomL$X.normal, biomL$Estrato.código, summary)
+
+LE <- ggplot(biomL, aes(x = X.normal, fill = factor(Estrato.código, levels = posicion_estratos))) + 
+  geom_boxplot() + 
+  labs(x = "Susceptibilidad magnética", y = "Líquenes") + 
+  coord_flip() + 
+  scale_fill_brewer(palette = "Greens", name = "Estrato") + 
+  theme_light()
+
+anova.estratos = aov(X.normal ~ Estrato.código, data = biomL)
+summary(anova.estratos) # valor p (significancia)
+
+tukey_estratos <- TukeyHSD(anova.estratos)
+print(tukey_estratos) # diferencias significativas entre pares de estratos
+```
+
+```{r}
+composicion <- plot_grid(TE, PE, RE, nrow = 1, labels = "AUTO")
+ggsave ("plots/composicion_estravasc.png", composicion, width = 16, height = 5, units = "in", dpi = 300)
+
+composicion <- plot_grid(BE, LE, labels = "AUTO")
+ggsave ("plots/composicion_estraNvasc.png", composicion, width = 10.6, height = 3.3, units = "in", dpi = 300)
+```
+
+## 5.5 Susceptibilidad entre niveles de contaminación
+
+Tillandsia
+
+```{r}
+biomT <- biom %>%
+  filter(Especie.epifita %in% c("Tillandsia recurvata")) %>% 
+  mutate(sus = as.numeric(X.normal))
+
+tapply(biomT$X.normal, biomT$Contaminación, summary)
+
+TC <- ggplot(biomT, aes(x = X.normal, fill = factor(Contaminación, levels = posicion_contam))) + 
+  geom_boxplot(aes(color = factor(Contaminación, 
+                                  levels = posicion_conta)),
+               alpha = 0.8) +
+  theme(legend.position = "none") +
+  labs(x = "Susceptibilidad magnética", y = "Tillandsia recurvata") + 
+  coord_flip() + 
+  scale_fill_manual(values = c("Control" = "blue", 
+                               "Media" = "darkorange",
+                               "Alta" = "red"), 
+                    name = "Contaminación") + 
+  scale_color_manual(values = c("blue","darkorange","red"),
+                    name = "Contaminación") +
+  theme_light()
+
+anova.contam = aov(X.normal ~ Contaminación, data = biomT)
+summary(anova.contam) # valor p (significancia)
+
+tukey_contam <- TukeyHSD(anova.contam)
+print(tukey_contam) # diferencias significativas entre pares de niveles de contaminación
+```
+
+Pleopeltis
+
+```{r}
+biomP <- biom %>%
+  filter(Especie.epifita %in% c("Pleopeltis macrocarpa")) %>% 
+  mutate(sus = as.numeric(X.normal))
+  
+tapply(biomP$X.normal, biomP$Contaminación, summary)
+
+PC <- ggplot(biomP, aes(x = X.normal, fill = factor(Contaminación, levels = posicion_contam))) + 
+  geom_boxplot(aes(color = factor(Contaminación, 
+                                  levels = posicion_conta)),
+               alpha = 0.8) +
+  theme(legend.position = "none") +
+  labs(x = "Susceptibilidad magnética", y = "Pleopeltis macrocarpa") + 
+  coord_flip() + 
+  scale_fill_manual(values = c("Control" = "blue", 
+                               "Media" = "darkorange",
+                               "Alta" = "red"), 
+                    name = "Contaminación") + 
+  scale_color_manual(values = c("blue","darkorange","red"),
+                    name = "Contaminación") +
+  theme_light()
+
+anova.contam = aov(X.normal ~ Contaminación, data = biomP)
+summary(anova.contam) # valor p (significancia)
+
+tukey_contam <- TukeyHSD(anova.contam)
+print(tukey_contam) # diferencias significativas entre pares de niveles de contaminación
+```
+
+Rhipsalis
+
+```{r}
+biomR <- biom %>%
+  filter(Especie.epifita %in% c("Rhipsalis baccifera")) %>% 
+  mutate(sus = as.numeric(X.normal))
+
+tapply(biomR$X.normal, biomR$Contaminación, summary)
+
+RC <- ggplot(biomR, aes(x = X.normal, fill = factor(Contaminación, levels = posicion_contam))) + 
+ geom_boxplot(aes(color = factor(Contaminación, 
+                                  levels = posicion_conta)),
+               alpha = 0.8) +
+  theme(legend.position = "none") +
+  labs(x = "Susceptibilidad magnética", y = "Rhipsalis baccifera") + 
+  coord_flip() + 
+  scale_fill_manual(values = c("Control" = "blue", 
+                               "Media" = "darkorange",
+                               "Alta" = "red"), 
+                    name = "Contaminación") + 
+  scale_color_manual(values = c("blue","darkorange","red"),
+                    name = "Contaminación") +
+  theme_light()
+
+anova.contam = aov(X.normal ~ Contaminación, data = biomR)
+summary(anova.contam) # valor p (significancia)
+
+tukey_contam <- TukeyHSD(anova.contam)
+print(tukey_contam) # diferencias significativas entre pares de niveles de contaminación
+```
+
+Briofitos
+
+```{r}
+biomB <- biom %>%
+  filter(Especie.epifita %in% c("Kymatocalyx dominicensis", "Fabronia ciliaris")) %>% 
+  mutate(sus = as.numeric(X.normal))
+
+ggplot(biomB, aes(x = X.normal, fill = factor(Especie.epifita))) + 
+  geom_boxplot() + 
+  labs(x = "Susceptibilidad magnética") + 
+  coord_flip() + 
+  scale_fill_brewer(palette = "Greens", name = "Especie") + 
+  theme_light()
+
+tapply(biomB$X.normal, biomB$Contaminación, summary)
+
+BC <- ggplot(biomB, aes(x = X.normal, fill = factor(Contaminación, levels = posicion_contam))) + 
+  geom_boxplot(aes(color = factor(Contaminación, 
+                                  levels = posicion_conta)),
+               alpha = 0.8) +
+  theme(legend.position = "none") +
+  labs(x = "Susceptibilidad magnética", y = "Briófitos") + 
+  coord_flip() + 
+  scale_fill_manual(values = c("Control" = "blue", 
+                               "Media" = "darkorange",
+                               "Alta" = "red"), 
+                    name = "Contaminación") + 
+  scale_color_manual(values = c("blue","darkorange","red"),
+                    name = "Contaminación") +
+  theme_light()
+
+anova.contam = aov(X.normal ~ Contaminación, data = biomB)
+summary(anova.contam) # valor p (significancia)
+
+tukey_contam <- TukeyHSD(anova.contam)
+print(tukey_contam) # diferencias significativas entre pares de niveles de contaminación
+```
+
+Liquenes
+
+```{r}
+biomL <- biom %>%
+  filter(Especie.epifita %in% c("Flavoparmelia carperata")) %>% 
+  mutate(sus = as.numeric(X.normal))
+
+tapply(biomL$X.normal, biomL$Contaminación, summary)
+
+LC <- ggplot(biomL, aes(x = X.normal, fill = factor(Contaminación, levels = posicion_contam))) + 
+  geom_boxplot(aes(color = factor(Contaminación, 
+                                  levels = posicion_conta)),
+               alpha = 0.8) +
+  theme(legend.position = "none") +
+  labs(x = "Susceptibilidad magnética", y = "Flavoparmelia caperata") + 
+  coord_flip() + 
+  scale_fill_manual(values = c("Control" = "blue", 
+                               "Media" = "darkorange",
+                               "Alta" = "red"), 
+                    name = "Contaminación") + 
+  scale_color_manual(values = c("blue","darkorange","red"),
+                    name = "Contaminación") +
+  theme_light()
+
+anova.contam = aov(X.normal ~ Contaminación, data = biomL)
+summary(anova.contam) # valor p (significancia)
+
+tukey_contam <- TukeyHSD(anova.contam)
+print(tukey_contam) # diferencias significativas entre pares de niveles de contaminación
+```
+
+Hojas
+
+```{r}
+biomH <- biom %>%
+  filter(Especie.epifita %in% c("Hojas")) %>% 
+  mutate(sus = as.numeric(X.normal))
+
+tapply(biomH$X.normal, biomH$Contaminación, summary)
+
+HC <-  ggplot(biomH, aes(x = X.normal, fill = factor(Contaminación, levels = posicion_contam))) + 
+  geom_boxplot(aes(color = factor(Contaminación, 
+                                  levels = posicion_conta)),
+               alpha = 0.8) +
+  theme(legend.position = "none") +
+  labs(x = "Susceptibilidad magnética", y = "Hojas de los árboles") + 
+  coord_flip() + 
+  scale_fill_manual(values = c("Control" = "blue", 
+                               "Media" = "darkorange",
+                               "Alta" = "red"), 
+                    name = "Contaminación") + 
+  scale_color_manual(values = c("blue","darkorange","red"),
+                    name = "Contaminación") +
+  theme_light()
+
+anova.contam = aov(X.normal ~ Contaminación, data = biomH)
+summary(anova.contam) # valor p (significancia)
+
+tukey_contam <- TukeyHSD(anova.contam)
+print(tukey_contam) # diferencias significativas entre pares de niveles de contaminación
+```
+
+```{r}
+composicion <- plot_grid(TC, PC, RC, BC, LC, HC, labels = "AUTO")
+ggsave ("plots/biomon_nivelxspecie.png", composicion, width = 17, height = 8, units = "in", dpi = 300)
+```
+
+## 5.6 Metales entre niveles de contaminación
+
+## 5.5 Susceptibilidad entre niveles de contaminación
+
+Agregar datos
+
+```{r}
+biom <- read.csv("databases/biom_metales.csv")
+posicion_conta <- c("Control",
+                     "Media",
+                     "Alta")
+```
+
+Tillandsia Ba
+
+```{r}
+biomTBa <- biom %>%
+  filter(Especie %in% c("Tillandsia"),
+         Elemento == "Ba")
+
+TBa <- ggplot(biomTBa, aes(x = Unidades.1, fill = factor(Contaminación, levels = posicion_contam))) + 
+  geom_boxplot(aes(color = factor(Contaminación, 
+                                  levels = posicion_conta)),
+               alpha = 0.8) +
+  theme(legend.position = "none") +
+  labs(x = "Bario (Ba)", y = "Tillandsia recurvata") + 
+  coord_flip() + 
+  scale_fill_manual(values = c("Control" = "blue", 
+                               "Media" = "darkorange",
+                               "Alta" = "red"), 
+                    name = "Contaminación") + 
+  scale_color_manual(values = c("blue","darkorange","red"),
+                    name = "Contaminación") +
+  theme_light()
+
+TBa
+```
+
+Tillandsia Cu
+
+```{r}
+biomTCu <- biom %>%
+  filter(Especie %in% c("Tillandsia"),
+         Elemento == "Cu")
+
+TCu <- ggplot(biomTCu, aes(x = Unidades.1, fill = factor(Contaminación, levels = posicion_contam))) + 
+  geom_boxplot(aes(color = factor(Contaminación, 
+                                  levels = posicion_conta)),
+               alpha = 0.8) +
+  theme(legend.position = "none") +
+  labs(x = "Cobre (Cu)", y = "Tillandsia recurvata") + 
+  coord_flip() + 
+  scale_fill_manual(values = c("Control" = "blue", 
+                               "Media" = "darkorange",
+                               "Alta" = "red"), 
+                    name = "Contaminación") + 
+  scale_color_manual(values = c("blue","darkorange","red"),
+                    name = "Contaminación") +
+  theme_light()
+
+TCu
+```
+
+Tillandsia Cr
+
+```{r}
+biomTCr <- biom %>%
+  filter(Especie %in% c("Tillandsia"),
+         Elemento == "Cr")
+
+TCr <- ggplot(biomTCr, aes(x = Unidades.1, fill = factor(Contaminación, levels = posicion_contam))) + 
+  geom_boxplot(aes(color = factor(Contaminación, 
+                                  levels = posicion_conta)),
+               alpha = 0.8) +
+  theme(legend.position = "none") +
+  labs(x = "Cromo (Cr)", y = "Tillandsia recurvata") + 
+  coord_flip() + 
+  scale_fill_manual(values = c("Control" = "blue", 
+                               "Media" = "darkorange",
+                               "Alta" = "red"), 
+                    name = "Contaminación") + 
+  scale_color_manual(values = c("blue","darkorange","red"),
+                    name = "Contaminación") +
+  theme_light()
+
+TCr
+```
+```{r}
+composicionT <- plot_grid(TBa, TCu, TCr, labels = "AUTO", ncol = 3)
+ggsave ("plots/biomon_metalxspp.png", composicionT, width = 17, height = 4, units = "in", dpi = 300)
+```
+
+Pleopeltis Ba
+
+```{r}
+biomPBa <- biom %>%
+  filter(Especie %in% c("Pleopeltis"),
+         Elemento == "Ba")
+  
+PBa <- ggplot(biomPBa, aes(x = Unidades.1, 
+                           fill = factor(Contaminación, 
+                                         levels = posicion_contam))) + 
+  geom_boxplot(aes(color = factor(Contaminación, 
+                                  levels = posicion_conta)),
+               alpha = 0.8) +
+  theme(legend.position = "none") +
+  labs(x = "Bario (Ba)", y = "Pleopeltis macrocarpa") + 
+  coord_flip() + 
+  scale_fill_manual(values = c("Control" = "blue", 
+                               "Media" = "darkorange",
+                               "Alta" = "red"), 
+                    name = "Contaminación") + 
+  scale_color_manual(values = c("blue","darkorange","red"),
+                    name = "Contaminación") +
+  theme_light()
+
+PBa
+```
+
+Pleopeltis Cu
+
+```{r}
+biomPCu <- biom %>%
+  filter(Especie %in% c("Pleopeltis"),
+         Elemento == "Cu")
+  
+PCu <- ggplot(biomPCu, aes(x = Unidades.1, 
+                           fill = factor(Contaminación, 
+                                         levels = posicion_contam))) + 
+  geom_boxplot(aes(color = factor(Contaminación, 
+                                  levels = posicion_conta)),
+               alpha = 0.8) +
+  theme(legend.position = "none") +
+  labs(x = "Cromo (Cu)", y = "Pleopeltis macrocarpa") + 
+  coord_flip() + 
+  scale_fill_manual(values = c("Control" = "blue", 
+                               "Media" = "darkorange",
+                               "Alta" = "red"), 
+                    name = "Contaminación") + 
+  scale_color_manual(values = c("blue","darkorange","red"),
+                    name = "Contaminación") +
+  theme_light()
+
+PCu
+```
+```{r}
+composicionP <- plot_grid(PBa, PCu, labels = "AUTO", ncol = 2)
+ggsave ("plots/biomon_metalxPl.png", composicionP, width = 12, height = 4, units = "in", dpi = 300)
+```
+
+
+Rhipsalis Ba
+
+```{r}
+biomRBa <- biom %>%
+  filter(Especie %in% c("Rhipsalis"),
+         Elemento == "Ba")
+
+RBa <- ggplot(biomRBa, aes(x = Unidades.1, 
+                           fill = factor(Contaminación, 
+                                         levels = posicion_contam))) + 
+ geom_boxplot(aes(color = factor(Contaminación, 
+                                  levels = posicion_conta)),
+               alpha = 0.8) +
+  theme(legend.position = "none") +
+  labs(x = "Bario (Ba)", y = "Rhipsalis baccifera") + 
+  coord_flip() + 
+  scale_fill_manual(values = c("Control" = "blue", 
+                               "Media" = "darkorange",
+                               "Alta" = "red"), 
+                    name = "Contaminación") + 
+  scale_color_manual(values = c("blue","darkorange","red"),
+                    name = "Contaminación") +
+  theme_light()
+
+RBa
+```
+Rhipsalis Cu
+
+```{r}
+biomRCu <- biom %>%
+  filter(Especie %in% c("Rhipsalis"),
+         Elemento == "Cu")
+
+RCu <- ggplot(biomRCu, aes(x = Unidades.1, 
+                           fill = factor(Contaminación, 
+                                         levels = posicion_contam))) + 
+ geom_boxplot(aes(color = factor(Contaminación, 
+                                  levels = posicion_conta)),
+               alpha = 0.8) +
+  theme(legend.position = "none") +
+  labs(x = "Cobre (Cu)", y = "Rhipsalis baccifera") + 
+  coord_flip() + 
+  scale_fill_manual(values = c("Control" = "blue", 
+                               "Media" = "darkorange",
+                               "Alta" = "red"), 
+                    name = "Contaminación") + 
+  scale_color_manual(values = c("blue","darkorange","red"),
+                    name = "Contaminación") +
+  theme_light()
+
+RCu
+```
+
+```{r}
+composicionR <- plot_grid(RBa, RCu, labels = "AUTO", nrow = 1)
+ggsave ("plots/biomon_metalxRi.png", composicionR, width = 12, height = 4, units = "in", dpi = 300)
+```
+
+### END ###
